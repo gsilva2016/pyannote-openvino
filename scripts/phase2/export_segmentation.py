@@ -39,7 +39,7 @@ def get_segmentation_model(
     token: str | None = None, cache_dir: Path | None = None
 ) -> tuple[torch.nn.Module, int, int]:
     pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
+        "pyannote/speaker-diarization-community-1",
         token=token,
         cache_dir=cache_dir,
     )

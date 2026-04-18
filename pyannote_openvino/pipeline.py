@@ -34,6 +34,7 @@ class OVEmbeddingConfig:
     use_energy: bool = False
     fbank_centering_span: Optional[float] = None
     min_num_samples: Optional[int] = None
+    device: Optional[str] = "CPU"
 
 
 class OVEmbeddingInference:
@@ -108,7 +109,6 @@ class OVEmbeddingInference:
         if masks is None:
             embeddings = self._model(features)
             return embeddings.cpu().numpy()
-
         imasks = (
             F.interpolate(masks.unsqueeze(1), size=num_frames, mode="nearest")
             .squeeze(1)
@@ -128,18 +128,17 @@ class OVEmbeddingInference:
 
 
 @contextmanager
-def _patch_pretrained_embedding(config: OVEmbeddingConfig, device: torch.device):
+def _patch_pretrained_embedding(config: OVEmbeddingConfig, device: str):
     original_verification = speaker_verification.PretrainedSpeakerEmbedding
     original_diarization = speaker_diarization_module.PretrainedSpeakerEmbedding
 
     def patched(
         embedding: Union[PipelineModel, OVEmbeddingConfig],
-        device: Optional[torch.device] = None,
         token: Optional[str] = None,
         cache_dir: Optional[Union[str, Path]] = None,
     ):
         if isinstance(embedding, OVEmbeddingConfig):
-            return OVEmbeddingInference(config, device or torch.device("cpu"))
+            return OVEmbeddingInference(config, embedding.device)
         return original_verification(
             embedding, device=device, token=token, cache_dir=cache_dir
         )
@@ -151,7 +150,6 @@ def _patch_pretrained_embedding(config: OVEmbeddingConfig, device: torch.device)
     finally:
         speaker_verification.PretrainedSpeakerEmbedding = original_verification
         speaker_diarization_module.PretrainedSpeakerEmbedding = original_diarization
-
 
 def _to_torch_device(device: Union[str, torch.device]) -> torch.device:
     if isinstance(device, torch.device):
@@ -176,7 +174,7 @@ class OVSpeakerDiarization(SpeakerDiarization):
         **kwargs,
     ):
         segmentation_model = OVSegmentationModel(Path(segmentation_xml), device=device)
-        config = embedding_config or OVEmbeddingConfig(xml_path=Path(embedding_xml))
+        config = embedding_config or OVEmbeddingConfig(xml_path=Path(embedding_xml), device=device)
         torch_device = _to_torch_device(device)
         if torch_device.type == "cuda":
             raise RuntimeError(
@@ -185,10 +183,9 @@ class OVSpeakerDiarization(SpeakerDiarization):
                 "must keep torch-side execution on CPU."
             )
 
-        with _patch_pretrained_embedding(config, torch_device):
+        with _patch_pretrained_embedding(config, device):
             super().__init__(segmentation=segmentation_model, embedding=config, **kwargs)
-
-        self.to(torch_device)
+            segmentation_model.to(device)
 
     @classmethod
     def from_pretrained(

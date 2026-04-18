@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import openvino as ov
 from openvino import Core
+from openvino.preprocess import PrePostProcessor
 from pyannote.audio.core.model import Model
 from pyannote.audio.core.task import Problem, Resolution, Specifications
 from pyannote.audio.models.blocks.sincnet import SincNet
@@ -74,7 +76,16 @@ class OVBaseModel(Model):
         self.to(self._device_str)
 
     def _compile(self, device: str):
-        self._compiled = self.core.compile_model(self._model, device)
+        if device == "GPU":
+            ppp = PrePostProcessor(self._model)
+            ppp.input().tensor().set_element_type(ov.Type.f16)
+            self._model = ppp.build()
+            self._compiled = self.core.compile_model(self._model, device, {"INFERENCE_PRECISION_HINT": ov.Type.f16})
+            #self._compiled = self.core.compile_model(self._model, device, {"INFERENCE_PRECISION_HINT": ov.Type.f32})
+            
+        else:
+            self._compiled = self.core.compile_model(self._model, device)
+        print(self._compiled)
 
     def to(self, device: torch.device | str) -> "OVBaseModel":
         ov_device = _openvino_device(device)

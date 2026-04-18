@@ -8,6 +8,7 @@ import os
 import warnings
 from pathlib import Path
 from typing import Any
+import time
 
 import librosa
 import numpy as np
@@ -100,8 +101,13 @@ def run_whisper(
         generate_kwargs={"language": "english"},
     )
 
-    print("Running Whisper via OpenVINO...")
+    print("Running Whisper via OpenVINO on device: ", device)
+    start_t = time.time()
     result = pipe(audio_input)
+    end_t = time.time()
+    delay_t = end_t - start_t
+    print(f"Whisper ASR took: {delay_t:,.2f} seconds.")
+    
     segments = result["chunks"]
 
     segments_cache.parent.mkdir(parents=True, exist_ok=True)
@@ -134,15 +140,20 @@ def run_diarization(
         print(f"Loaded diarization cache from {cache_path}")
         return annotation
 
+    print("Starting Pyannote diarization via OpenVINO on device: ", device)
     pipeline = OVSpeakerDiarization.from_pretrained(ov_dir, device=device)
-    print("Running OpenVINO speaker diarization...")
+    print("Running OpenVINO speaker diarization on device: ", device)
     waveform = torch.tensor(load_audio(audio_path)["array"]).unsqueeze(0)
     file_input = {
         "uri": audio_path.stem,
         "waveform": waveform,
         "sample_rate": AUDIO_RATE,
     }
+    start_t = time.time()
     raw = pipeline(file_input)
+    end_t = time.time()
+    delay_t = end_t - start_t
+    print(f"Pyannote Diarization took: {delay_t:,.2f} seconds.")
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with cache_path.open("w", encoding="utf-8") as f:

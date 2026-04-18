@@ -6,7 +6,16 @@ embedding models via Intel-compatible OpenVINO IR, so the pipeline runs on CPU a
 Intel GPUs without relying on PyTorch FFT patches.
 
 ## Installation
-1. Create or activate the provided virtual environment (`.venv`).
+1. Create or activate the provided virtual environment (`.venv`). 3.11 <= Python Version <= 3.13
+
+   ```bash
+   conda create -n pyannote-openvino -y python=3.12
+   ```
+
+   ```bash
+   conda activate pyannote-openvino
+   ```
+
 2. Install the runtime dependencies:
    ```bash
    python -m pip install -e .[stt]
@@ -18,22 +27,16 @@ Intel GPUs without relying on PyTorch FFT patches.
    `ffmpeg/bin` for convenience).
 
 ## Exporting the reference models to ONNX
-Export scripts live under `scripts/phase2/`:
+Export scripts reside under `scripts/phase2/`:
 - `export_segmentation.py` exports the SincNet+transformer segmentation model with
   dynamic frame lengths.
 - `export_embedding.py` wraps the ResNet embedding head so it consumes pre-computed
   mel filter banks instead of running FFT/RFFT inside the ONNX graph.
 
-Run both scripts before converting to IR:
+Run both scripts, converts models to ONNX, before converting to IR:
 ```bash
 python scripts/phase2/export_segmentation.py --duration 2.0 --output models/onnx/segmentation.onnx
 python scripts/phase2/export_embedding.py --duration 2.0 --frames 128 --output models/onnx/embedding.onnx
-```
-
-You can also use the `optimum-cli` shortcuts shown in this repo:
-```bash
-optimum-cli export openvino --model models/onnx/segmentation.onnx models/ov/segmentation
-optimum-cli export openvino --model models/onnx/embedding.onnx models/ov/embedding
 ```
 
 ## Converting ONNX to OpenVINO IR
@@ -41,11 +44,22 @@ optimum-cli export openvino --model models/onnx/embedding.onnx models/ov/embeddi
 into `.xml`/`.bin` IR blobs stored under `models/ov/`. By default it keeps FP32
 weights but accepts `--weight-format fp16` for iGPU workloads.
 
+```bash
+python scripts/phase3/convert_to_ov.py
+```
+
+or for GPU workloads
+
+```bash
+python scripts/phase3/convert_to_ov.py --weight-format fp16
+```
+
 Validation is available via `scripts/phase3/validate_ov.py`, which loads the IR
 models with `openvino.runtime.Core`, runs dummy inputs, and prints the output
 shapes.
 
 ## Running the OpenVINO diarization pipeline
+
 Use `pyannote_openvino.OVSpeakerDiarization` as a drop-in replacement for
 `pyannote.audio.Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")`.
 The helper accepts `segmentation_xml`, `embedding_xml`, and a device string such as
@@ -70,6 +84,11 @@ The repo ships a single CLI under `docs/transcribe_v4.py` that accelerates both 
    speaker/segs.
 
 Example usage:
+
+*** CAUTION *** 
+Before running `the docs/transcribe_v4.py` script be sure the delete the files in the `artifacts` folder. The script will use these cache files and skip processing the source audio file for ASR and Diarization.
+
+
 ```bash
 python docs/transcribe_v4.py \
   --audio samples/Stirling\ Lennon\ Clips_mixdown.wav \
