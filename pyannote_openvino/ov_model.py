@@ -112,7 +112,7 @@ class OVBaseModel(Model):
         start_t = time.time()
         outputs = self._compiled([array])
         end_t = time.time()
-        print(f"{self._input_name}:{inputs.shape} -> time took: {(end_t-start_t)*1000}")
+        #print(f"{self._input_name}:{inputs.shape} -> time took: {(end_t-start_t)*1000}")
         first_output = next(iter(outputs.values()))
         return torch.from_numpy(first_output)
 
