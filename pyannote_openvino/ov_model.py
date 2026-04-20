@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import time
 import openvino as ov
 from openvino import Core
 from openvino.preprocess import PrePostProcessor
@@ -20,7 +21,7 @@ from pyannote.audio.utils.receptive_field import (
 SEGMENTATION_SPECIFICATIONS = Specifications(
     problem=Problem.MONO_LABEL_CLASSIFICATION,
     resolution=Resolution.FRAME,
-    duration=10.0,
+    duration=10,
     min_duration=None,
     classes=["speaker#1", "speaker#2", "speaker#3"],
     powerset_max_classes=2,
@@ -66,6 +67,7 @@ class OVBaseModel(Model):
         num_channels: int = 1,
     ):
         super().__init__(sample_rate=sample_rate, num_channels=num_channels)
+        self.sample_rate = sample_rate
         self.core = Core()
         self._xml_path = Path(xml_path)
         self._model = self.core.read_model(str(self._xml_path))
@@ -76,6 +78,14 @@ class OVBaseModel(Model):
         self.to(self._device_str)
 
     def _compile(self, device: str):
+
+        if self._input_name == "fbanks":
+            # Embedding... can't compile static so skip it.
+            pass
+        else:
+            # Segmentation -- static shape is much more performant than dynamic
+            self._model.reshape([1,1,SEGMENTATION_SPECIFICATIONS.duration * self.sample_rate])
+
         if device == "GPU":
             ppp = PrePostProcessor(self._model)
             ppp.input().tensor().set_element_type(ov.Type.f16)
@@ -85,7 +95,8 @@ class OVBaseModel(Model):
             
         else:
             self._compiled = self.core.compile_model(self._model, device)
-        print(self._compiled)
+        print(device, " ", self._compiled)
+        
 
     def to(self, device: torch.device | str) -> "OVBaseModel":
         ov_device = _openvino_device(device)
@@ -98,7 +109,10 @@ class OVBaseModel(Model):
             self._compile(self._device_str)
 
         array = inputs.detach().cpu().numpy()
+        start_t = time.time()
         outputs = self._compiled([array])
+        end_t = time.time()
+        print(f"{self._input_name}:{inputs.shape} -> time took: {(end_t-start_t)*1000}")
         first_output = next(iter(outputs.values()))
         return torch.from_numpy(first_output)
 

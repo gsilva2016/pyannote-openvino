@@ -174,6 +174,7 @@ class OVSpeakerDiarization(SpeakerDiarization):
         **kwargs,
     ):
         segmentation_model = OVSegmentationModel(Path(segmentation_xml), device=device)
+        # TODO: Force embedding device to CPU due to GPU dynamic performance issue
         config = embedding_config or OVEmbeddingConfig(xml_path=Path(embedding_xml), device=device)
         torch_device = _to_torch_device(device)
         if torch_device.type == "cuda":
