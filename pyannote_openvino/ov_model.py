@@ -80,8 +80,10 @@ class OVBaseModel(Model):
     def _compile(self, device: str):
 
         if self._input_name == "fbanks":
-            # Embedding... can't compile static so skip it.
-            pass
+            # unbounded dynamic shape does not improve. likely too large of a range...
+            # try  max static shape with padded 0's
+            print("Build static max size to be used with padding")
+            self._model.reshape([1, 980, 80])
         else:
             # Segmentation -- static shape is much more performant than dynamic
             self._model.reshape([1,1,SEGMENTATION_SPECIFICATIONS.duration * self.sample_rate])
@@ -90,8 +92,11 @@ class OVBaseModel(Model):
             ppp = PrePostProcessor(self._model)
             ppp.input().tensor().set_element_type(ov.Type.f16)
             self._model = ppp.build()
-            self._compiled = self.core.compile_model(self._model, device, {"INFERENCE_PRECISION_HINT": ov.Type.f16})
-            #self._compiled = self.core.compile_model(self._model, device, {"INFERENCE_PRECISION_HINT": ov.Type.f32})
+            self._compiled = self.core.compile_model(self._model, device, {
+                "INFERENCE_PRECISION_HINT": ov.Type.f16,
+                "PERFORMANCE_HINT": "LATENCY", 
+                "EXECUTION_MODE_HINT": "PERFORMANCE"
+            })
             
         else:
             self._compiled = self.core.compile_model(self._model, device)
@@ -112,7 +117,7 @@ class OVBaseModel(Model):
         start_t = time.time()
         outputs = self._compiled([array])
         end_t = time.time()
-        #print(f"{self._input_name}:{inputs.shape} -> time took: {(end_t-start_t)*1000}")
+        #print(f"{self._input_name}:{inputs.shape} -> time took: {(end_t-start_t)*1000} ms")
         first_output = next(iter(outputs.values()))
         return torch.from_numpy(first_output)
 

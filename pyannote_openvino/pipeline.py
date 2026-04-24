@@ -121,7 +121,12 @@ class OVEmbeddingInference:
             masked = feature[imask]
             if masked.shape[0] < self.min_num_frames:
                 continue
-            embedding = self._model(masked[None])
+            
+            max_tensor_len = 980
+            pad_size = max_tensor_len - masked[None].shape[1]
+            padding = torch.zeros(1, pad_size, 80)
+            masked_padded = torch.cat([masked[None], padding], dim=1)
+            embedding = self._model(masked_padded)
             embeddings[idx] = embedding.squeeze(0).cpu().numpy()
 
         return embeddings
@@ -174,8 +179,7 @@ class OVSpeakerDiarization(SpeakerDiarization):
         **kwargs,
     ):
         segmentation_model = OVSegmentationModel(Path(segmentation_xml), device=device)
-        # TODO: Force embedding device to CPU due to GPU dynamic performance issue
-        config = embedding_config or OVEmbeddingConfig(xml_path=Path(embedding_xml), device="CPU")
+        config = embedding_config or OVEmbeddingConfig(xml_path=Path(embedding_xml), device=device)
         torch_device = _to_torch_device(device)
         if torch_device.type == "cuda":
             raise RuntimeError(
